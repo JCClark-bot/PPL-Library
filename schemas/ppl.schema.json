@@ -1,28 +1,100 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "PPL Schema",
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "title": "Process Protocol Layer (PPL) Schema",
   "type": "object",
   "required": ["process", "inputs", "preconditions", "activity", "outputs", "approvals"],
   "properties": {
-    "process": { "type": "string" },
-    "version": { "type": "string" },
+    "process": {
+      "type": "string",
+      "description": "Name of the process"
+    },
+    "version": {
+      "type": "string",
+      "description": "Schema or process version (e.g. 1.0)"
+    },
     "inputs": {
       "type": "array",
-      "items": { "type": ["string", "object"] }
+      "description": "Data, documents, or materials required to begin",
+      "items": {
+        "type": ["string", "object"]
+      }
     },
     "preconditions": {
       "type": "array",
-      "items": { "type": ["string", "object"] }
+      "description": "Conditions that must be true before the process starts",
+      "items": {
+        "type": ["string", "object"]
+      }
     },
-    "activity": { "type": "string" },
+    "activity": {
+      "type": "string",
+      "description": "Description of the action to be performed"
+    },
     "outputs": {
       "type": "array",
-      "items": { "type": ["string", "object"] }
+      "description": "Expected results of the activity",
+      "items": {
+        "type": ["string", "object"]
+      }
     },
     "approvals": {
       "type": "array",
-      "items": { "type": "object" }
+      "description": "Verification or sign-off steps",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string" },
+          "required": { "type": "boolean" },
+          "actor": { "type": "string", "description": "Who approves (human, system, role)" }
+        }
+      }
     },
-    "metadata": { "type": "object" }
-  }
+    "decision_artifacts": {
+      "type": "array",
+      "description": "Documents, data, or artifacts used to guide decisions",
+      "items": { "type": "string" }
+    },
+    "transitions": {
+      "type": "array",
+      "description": "Links to next processes or states",
+      "items": {
+        "type": "object",
+        "properties": {
+          "to_process": { "type": "string" },
+          "condition": { "type": "string" }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Defines if a human or system check is required",
+      "properties": {
+        "method": { "type": "string" },
+        "required": { "type": "boolean" }
+      }
+    },
+    "deployment_profile": {
+      "type": "object",
+      "description": "Links this definition to real systems or environments",
+      "properties": {
+        "system": { "type": "string" },
+        "environment": { "type": "string" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata for traceability",
+      "properties": {
+        "owner": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
 }
+
