@@ -1,0 +1,66 @@
+process: Problem Review Board (PRB) Meeting
+version: "1.0"
+
+# Five Pillars
+inputs:
+  - ncr_record            # linked ID to the nonconformity/incident
+  - evidence_package      # photos, logs, batch records, complaint data
+  - risk_assessment_draft # initial severity/occurrence/detectability
+  - proposed_containment  # immediate action(s) taken
+preconditions:
+  - quorum_present: true
+  - chair_assigned: true
+  - incident_triaged: true
+  - agenda_published: true
+activity: >
+  Convene PRB to classify the problem, assess risk/impact, decide on
+  containment/eradication, determine if CAPA is required, assign owners
+  and deadlines, and confirm reporting obligations.
+outputs:
+  - prb_minutes           # decisions, attendees, timestamps
+  - decisions_log         # classification, disposition, reportability
+  - action_items          # owner, due_date, description, linkage
+  - risk_rating_final     # S/O/D or other scale; rationale recorded
+  - capa_trigger          # boolean + reference id if opened
+approvals:
+  - type: prb_chair_signoff
+    actor: PRB Chair
+    required: true
+  - type: qa_release_if_applicable
+    actor: QA
+    required: false
+
+# Additional Layers
+decision_artifacts:
+  - risk_matrix_v1
+  - fmea_sheet
+  - five_whys
+  - fishbone_diagram
+  - regulatory_criteria_checklist
+transitions:
+  - to_process: Launch CAPA
+    condition: risk_rating_final >= high OR systemic_issue_detected
+  - to_process: Supplier SCAR
+    condition: supplier_attribution_confirmed
+  - to_process: Monitor Only
+    condition: low_risk AND containment_effective
+  - to_process: Close NCR
+    condition: all_actions_verified AND no_further_risk
+verification:
+  method: record_review_and_attachment_check
+  required: true
+deployment_profile:
+  system: QMS (e.g., Veeva, ETQ, ZenQMS, Jira+Forms)
+  environment: Production Quality
+metadata:
+  owner: Quality Systems
+  created_at: "2025-09-02T00:00:00Z"
+  tags: [quality, PRB, CAPA, NCR]
+  prb:
+    prb_id: PRB-2025-0001
+    origin: complaint|deviation|ncr|audit|supplier|internal
+    severity_level: low|medium|high|critical
+    affected_products: [SKU-001, SKU-017]
+    batch_lots: [LOT12345, LOT12346]
+    regulatory_reportable: false
+    due_date_overall: "2025-09-16"
