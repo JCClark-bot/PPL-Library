@@ -1,0 +1,254 @@
+ppl:
+  id: ppl.pm.initiating.v2
+  name: Project Management – Initiating Process Group
+  version: "2.0.0"
+  standard_source: "PMBOK® Guide, 5th Edition (process-oriented)"
+  process_group: Initiating
+  description: >
+    Formally authorizes a project/phase and identifies stakeholders. Produces an
+    approved Project Charter and an initial Stakeholder Register.
+  owner_role: "Project Sponsor (authorization) / Project Manager (execution)"
+
+  knowledge_area_mapping:
+    - knowledge_area: Project Integration Management
+      processes:
+        - { id: "4.1", name: "Develop Project Charter" }
+    - knowledge_area: Project Stakeholder Management
+      processes:
+        - { id: "13.1", name: "Identify Stakeholders" }
+
+  trigger:
+    description: A project need is identified.
+    drivers:
+      - Market demand
+      - Organizational need
+      - Customer request
+      - Technological advance
+      - Legal or regulatory requirement
+      - Ecological or social need
+
+  actors:
+    - role: Project Sponsor
+      responsibilities:
+        - Provide strategic alignment and funding direction
+        - Approve Business Case and Charter
+    - role: Project Manager
+      responsibilities:
+        - Draft Charter; lead stakeholder identification
+        - Coordinate approvals and repository storage
+    - role: PMO / Governance
+      responsibilities:
+        - Template control; audit trail; archive
+    - role: SMEs / Finance / Legal
+      responsibilities:
+        - Contribute expert judgment and constraints
+
+  inputs:
+    - id: feasibility_study
+      name: Feasibility Study
+      required: false
+      source: Business analysis
+      format: [pdf, docx, link]
+    - id: sow
+      name: Statement of Work (SOW)
+      required: false
+      source: Customer/internal
+      format: [pdf, docx]
+    - id: agreements
+      name: Agreements / Contracts / LOIs
+      required: false
+      source: External parties
+      format: [pdf]
+    - id: procurement_docs
+      name: Procurement Documents
+      required: false
+      source: Procurement
+      format: [pdf]
+    - id: eef
+      name: Enterprise Environmental Factors (EEF)
+      required: true
+      source: Org policies/constraints
+      format: [link, docx]
+    - id: opa
+      name: Organizational Process Assets (OPA)
+      required: true
+      source: PMO templates, historical data
+      format: [link, docx]
+
+  decision_artifacts:
+    - { id: business_case, name: Business Case, status: approved }
+    - { id: project_charter, name: Project Charter, status: approved }
+
+  preconditions:
+    - id: sponsor_assigned
+      description: Sponsor assigned in org directory with contact details
+      type: boolean
+      required: true
+    - id: need_documented
+      description: Business need/problem/opportunity statement recorded and filed
+      type: reference
+      required: true
+    - id: baseline_docs_access
+      description: Access granted to SOW/agreements/feasibility (if they exist)
+      type: boolean
+      required: false
+
+  activities:
+    - id: A1
+      name: Make Business Case
+      owner_role: Project Manager with Sponsor & SMEs
+      description: >
+        Document justification, alignment, benefits, and high-level costs/risks/alternatives.
+      entry_criteria: [sponsor_assigned, need_documented]
+      tasks:
+        - Capture problem/opportunity and success metrics
+        - Assess options; recommend preferred option
+        - Outline high-level schedule and budget range
+        - Summarize risks/constraints; propose go/no-go criteria
+      tools_techniques:
+        - Expert judgment
+        - Facilitation workshops
+        - Financial analysis (NPV/IRR/payback)
+      outputs: [business_case]
+
+    - id: A2
+      name: Obtain Preliminary Approval
+      owner_role: Project Sponsor
+      description: Sponsor sign-off on Business Case to proceed to Charter.
+      entry_criteria: [business_case]
+      tasks:
+        - Review alignment and value
+        - Authorize Charter development
+      outputs: [business_case]
+      approvals: [prelim_go]
+
+    - id: A3
+      name: Create Project Charter (4.1)
+      owner_role: Project Manager
+      description: >
+        Draft Charter: purpose, objectives, high-level scope, major risks, milestones, budget, authority.
+      entry_criteria: [business_case]
+      tasks:
+        - Define purpose and measurable objectives
+        - Capture high-level scope and key deliverables
+        - Outline high-level schedule and budget
+        - Record major risks, assumptions, constraints
+        - Name key roles and authority level
+      tools_techniques: [Expert judgment, Facilitation techniques]
+      outputs: [project_charter]
+
+    - id: A4
+      name: Obtain Final Approval of Project Charter
+      owner_role: Project Sponsor
+      description: Formal authorization of project/phase via signed Charter.
+      entry_criteria: [project_charter]
+      tasks:
+        - Review scope, constraints, governance
+        - Confirm funding approach
+      outputs: [project_charter]
+      approvals: [charter_signoff]
+
+    - id: A5
+      name: Identify Stakeholders (13.1)
+      owner_role: Project Manager
+      description: Identify/analyze stakeholders; produce Stakeholder Register and initial engagement strategy.
+      entry_criteria: [project_charter]
+      tasks:
+        - Elicit stakeholders via contracts, org charts, SMEs
+        - Analyze interest/power/influence/salience
+        - Classify using power-interest, power-influence, and influence-impact grids
+        - Draft initial engagement/communication needs
+      tools_techniques: [Stakeholder analysis techniques, Meetings/interviews, Expert judgment]
+      outputs: [stakeholder_register]
+
+  outputs:
+    - { id: business_case, name: Business Case, from: A1, required_for_next_group: true }
+    - { id: project_charter, name: Project Charter, from: A3, required_for_next_group: true }
+    - { id: stakeholder_register, name: "Stakeholder Register (initial)", from: A5, required_for_next_group: true }
+
+  approvals:
+    - id: prelim_go
+      name: Preliminary Approval (Business Case)
+      approver_role: Project Sponsor
+      required: true
+      evidence: Signature / e-sign / approval record
+    - id: charter_signoff
+      name: Charter Approval
+      approver_role: Project Sponsor
+      required: true
+      evidence: Signature / e-sign / approval record
+
+  verification:
+    checks:
+      - { id: V1, name: Charter Signed, method: "Verify digital signature and approval record" }
+      - { id: V2, name: Stakeholder Register Completeness, method: "Confirm key roles present with classification" }
+      - { id: V3, name: Repository Storage, method: "All artifacts stored with version & access controls" }
+
+  transitions:
+    on_success:
+      next_process_group: Planning
+      entry_package: [business_case, project_charter, stakeholder_register]
+    on_hold_conditions:
+      - Sponsor declines to fund
+      - Business Case fails value threshold
+    on_hold_actions:
+      - Return to A1 for revision
+      - Archive need and close initiation record
+
+  deployment_profile:
+    input_agent:
+      validations:
+        - If SOW exists, ensure version/date and customer owner recorded
+        - Capture references to EEF/OPA used
+    activity_agent:
+      orchestrates: [A1, A2, A3, A4, A5]
+      templates:
+        - templates/business_case_vX.docx
+        - templates/project_charter_vX.docx
+        - templates/stakeholder_register_vX.xlsx
+    approval_agent:
+      routes: [prelim_go, charter_signoff]
+      capture: e-sign hash, timestamp, approver ID
+    output_agent:
+      repository_root: "${project.repo}/initiation"
+      store:
+        - "${project.repo}/initiation/business_case.pdf"
+        - "${project.repo}/initiation/project_charter.pdf"
+        - "${project.repo}/initiation/stakeholder_register.xlsx"
+      retention: "Project life + 3 years"
+    verification_agent:
+      checklist: [V1, V2, V3]
+
+  metrics:
+    - key: cycle_time_days
+      name: Initiation Cycle Time
+      formula: "days(trigger_date, charter_approval_date)"
+      target: "≤ 30 days"
+      frequency: monthly
+      owner: PMO
+    - key: stakeholder_coverage
+      name: Stakeholder Coverage Ratio
+      formula: "identified_key_roles / planned_key_roles"
+      target: ">= 0.9"
+      frequency: per_project
+      owner: Project Manager
+    - key: revision_count_charter
+      name: Charter Revision Count
+      formula: "count(charter_versions_before_approval)"
+      target: "≤ 3"
+      frequency: per_project
+      owner: Project Manager
+
+  risks_and_controls:
+    - { risk: Insufficient strategic alignment, control: "PMO review of Business Case alignment section" }
+    - { risk: Missing key stakeholders, control: "Cross-functional review before verification V2" }
+    - { risk: Ambiguous PM authority, control: "Mandatory Charter field: authority and decision rights" }
+
+  audit_evidence:
+    - "Signed Business Case and Charter (hash + timestamp)"
+    - "Stakeholder Register with analysis fields"
+    - "Version history and approvals log"
+
+  notes:
+    - "Business Case is a decision artifact, not a PMBOK process."
+    - "Outputs here become entry criteria for the Planning Process Group."
