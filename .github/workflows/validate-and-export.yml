@@ -1,0 +1,51 @@
+name: Validate and Export PPL
+
+on:
+  push:
+    paths:
+      - '**.yaml'
+      - '**.yml'
+      - 'schemas/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install tools
+        run: |
+          npm install -g ajv-cli js-yaml
+
+      - name: Validate YAML against schema
+        run: |
+          for file in $(find . -name '*.yaml' -o -name '*.yml'); do
+            echo "Validating $file..."
+            # Convert YAML to JSON
+            js-yaml "$file" > tmp.json
+            # Validate JSON against schema
+            ajv validate -s schemas/ppl.schema.json -d tmp.json --strict=false
+          done
+
+      - name: Export YAML to JSON
+        run: |
+          mkdir -p dist
+          for file in $(find . -name '*.yaml' -o -name '*.yml'); do
+            base=$(basename "$file" .yaml)
+            base=${base%.yml}
+            echo "Exporting $file -> dist/$base.json"
+            js-yaml "$file" > "dist/$base.json"
+          done
+
+      - name: Commit JSON exports
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Auto-export YAML to JSON"
+          file_pattern: dist/*.json
