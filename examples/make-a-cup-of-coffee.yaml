@@ -1,0 +1,141 @@
+ppl:
+  id: ppl.example.coffee.v2
+  name: Make a Cup of Coffee
+  version: "2.0.0"
+  description: >
+    Universal example to illustrate the Process Protocol Layer (PPL) Schema v2.
+    Demonstrates the five core elements and additional layers (decision artifacts,
+    transitions, deployment, metrics, governance/values/utility).
+
+  # --- Core: trigger, actors, inputs, preconditions, activities, outputs, verification ---
+  trigger:
+    description: User requests a cup of coffee.
+
+  actors:
+    - role: User
+      responsibilities: [Selects beverage options, consumes output safely]
+    - role: Operator
+      responsibilities: [Executes steps, handles equipment safely]
+    - role: Device
+      responsibilities: [Heats water, brews per configuration]
+
+  inputs:
+    - { id: water, name: Fresh water, required: true, format: [ml] }
+    - { id: grounds, name: Coffee grounds (or pod), required: true, format: [g] }
+    - { id: filter, name: Paper/metal filter (if drip), required: false }
+    - { id: cup, name: Clean cup, required: true }
+    - { id: power, name: Power source, required: true }
+
+  preconditions:
+    - { id: machine_powered, description: "Machine plugged in and switched on", type: boolean, required: true }
+    - { id: water_min, description: "Water volume ≥ 200 ml", type: threshold, required: true }
+    - { id: hopper_has_grounds, description: "Grounds/pod available", type: boolean, required: true }
+    - { id: cup_ready, description: "Cup placed correctly under spout", type: boolean, required: true }
+
+  activities:
+    - id: A1
+      name: Configure Brew
+      owner_role: Operator
+      entry_criteria: [machine_powered, water_min, hopper_has_grounds, cup_ready]
+      tasks:
+        - Select brew method/strength/size per user preference
+        - Insert filter if required and add grounds/pod
+      outputs: [brew_config]
+      tools_techniques: [Device UI, measurement marks]
+
+    - id: A2
+      name: Brew
+      owner_role: Device
+      entry_criteria: [brew_config]
+      tasks:
+        - Heat water to target range (90–96°C)
+        - Pass water through grounds at configured ratio/time
+        - Fill cup to selected size
+      outputs: [coffee_cup]
+      tools_techniques: [Heater, pump, flow control]
+
+    - id: A3
+      name: Finish & Serve
+      owner_role: Operator
+      entry_criteria: [coffee_cup]
+      tasks:
+        - Optional additions (milk/sugar)
+        - Dispose grounds/filter safely; wipe spills
+      outputs: [served_coffee]
+      tools_techniques: [Stirrer, milk/sugar supplies]
+
+  outputs:
+    - { id: brew_config, name: Brew configuration, from: A1, required_for_next_group: false }
+    - { id: coffee_cup, name: Brewed coffee in cup, from: A2, required_for_next_group: true }
+    - { id: served_coffee, name: Coffee ready to drink, from: A3, required_for_next_group: true }
+
+  verification:
+    checks:
+      - { id: V1, name: Temperature Check, method: "Coffee temp ≥ 60°C at serve" }
+      - { id: V2, name: Fill Level, method: "Cup filled within ±10 ml of selected size" }
+      - { id: V3, name: Cleanliness, method: "No leaks/spills; filter disposed" }
+
+  # --- Additional Layers: decision artifacts, transitions, deployment, metrics, risks/controls, overlays ---
+  decision_artifacts:
+    - { id: preference_record, name: User selection (size/strength/method), status: approved }
+
+  transitions:
+    on_success:
+      next_process_group: "Enjoy Beverage"
+      entry_package: [served_coffee]
+    on_hold_conditions:
+      - Low water detected
+      - Grounds/pod jam
+      - Cup not detected
+    on_hold_actions:
+      - Prompt to add water
+      - Clear jam / reseat pod
+      - Place cup and re-run A2
+    # (Optional failure route for safety-critical contexts)
+    # on_fail_conditions: ["Heater fault", "Leak detected"]
+    # on_fail_actions: ["Abort brew", "Display error", "Service device"]
+
+  deployment_profile:
+    input_agent:
+      validations:
+        - "Confirm power present and machine passes self-check"
+        - "Measure/confirm water volume ≥ 200 ml"
+    activity_agent:
+      orchestrates: [A1, A2, A3]
+      templates: []
+    approval_agent:
+      routes: [preference_record]
+      capture: "Timestamp, user id, selection (size/strength/method)"
+    output_agent:
+      repository_root: "local/device/session"
+      store: ["preference_record.json"]   # if logging user prefs
+      retention: "Session-only unless user opts-in"
+    verification_agent:
+      checklist: [V1, V2, V3]
+
+  metrics:
+    - { key: cycle_time_seconds, name: Brew Cycle Time, formula: "t(A1_start)→t(A3_end)", target: "≤ 240 s", frequency: per_brew, owner: Operator }
+    - { key: temp_at_serve, name: Serve Temperature, formula: "°C at V1", target: "≥ 60°C", frequency: per_brew, owner: Device }
+    - { key: waste_grounds_g, name: Grounds Waste, formula: "used_grounds - target_ratio*water", target: "≤ 10 g variance", frequency: weekly, owner: Operator }
+    - { key: rework_rate, name: Rebrew Rate, formula: "rebrews / total_brews", target: "< 3%", frequency: monthly, owner: Operator }
+    # If metrics don’t apply in a variant, use: metrics: [ { key: none, name: none, formula: none, target: none } ]
+
+  risks_and_controls:
+    - { risk: Burns from hot liquids, control: "Require cup placement verification; insulated surfaces; caution label" }
+    - { risk: Overflow/spill, control: "Cup detection sensor; level check V2; auto-stop on overflow" }
+    - { risk: Bitter/under-extracted coffee, control: "Temperature window 90–96°C; ratio/time guardrails in A2" }
+
+  overlays:
+    utility:
+      value_added: "Provides beverage meeting user preference"
+      risk_reduced: "Avoids under/over-extraction and spills"
+    values:
+      principles: ["safety", "fairness", "waste reduction"]
+      tests:
+        - "Safety: V1 must pass before serving"
+        - "Waste: waste_grounds_g within target weekly"
+    governance:
+      roles:
+        approver: "User"   # for preference_record
+        operator: "Operator"
+        device: "Device"
