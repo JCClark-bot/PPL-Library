@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PPL Schema",
+  "type": "object",
+  "required": ["process", "inputs", "preconditions", "activity", "outputs", "approvals"],
+  "properties": {
+    "process": { "type": "string" },
+    "version": { "type": "string" },
+    "inputs": {
+      "type": "array",
+      "items": { "type": ["string", "object"] }
+    },
+    "preconditions": {
+      "type": "array",
+      "items": { "type": ["string", "object"] }
+    },
+    "activity": { "type": "string" },
+    "outputs": {
+      "type": "array",
+      "items": { "type": ["string", "object"] }
+    },
+    "approvals": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "metadata": { "type": "object" }
+  }
+}
