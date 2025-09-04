@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft/2020-12/schema",
-  "title": "Process Protocol Layer (PPL) Schema v2.2",
+  "title": "Process Protocol Layer (PPL) Schema v2.3",
   "type": "object",
   "required": ["process", "inputs", "preconditions", "activity", "outputs", "approvals"],
 
@@ -97,7 +97,7 @@
 
     "Recordkeeping": {
       "type": "object",
-      "description": "Optional routing/retention overrides; use sparingly (engine already audit-logs actions).",
+      "description": "Optional routing/retention/policy overrides; engine always audit-logs by default.",
       "properties": {
         "destination": { "type": "string", "description": "Storage path/URI (SharePoint, S3, QMS area, etc.)" },
         "format": { "type": "string", "description": "Expected artifact format (PDF, JSON, CSV, etc.)" },
@@ -109,12 +109,12 @@
 
     "Dispatch": {
       "type": "object",
-      "description": "Send a generated record/package somewhere when a thing completes.",
+      "description": "Send a generated record/package somewhere when an element completes.",
       "required": ["destination"],
       "properties": {
         "destination": { "type": "string", "description": "Target system/URI/email queue, etc." },
         "format": { "type": "string", "description": "Payload format to send (PDF, JSON, ZIP, msgpack)" },
-        "template_ref": { "type": "string", "description": "Optional template or renderer reference" },
+        "template_ref": { "type": "string", "description": "Optional template/renderer reference" },
         "include": {
           "type": "object",
           "description": "Selectors for what to include in the payload",
@@ -127,8 +127,8 @@
           },
           "additionalProperties": false
         },
-        "sign": { "type": "boolean", "description": "Digitally sign the payload before dispatch" },
-        "encrypt": { "type": "boolean", "description": "Encrypt the payload at rest/in transit (engine-level keys)" },
+        "sign": { "type": "boolean", "description": "Digitally sign payload before dispatch" },
+        "encrypt": { "type": "boolean", "description": "Encrypt payload at rest/in transit" },
         "when": {
           "type": "string",
           "enum": ["on_activity_complete", "on_step_complete", "on_process_complete", "manual"],
@@ -136,6 +136,37 @@
         },
         "metadata": { "type": "object", "additionalProperties": true }
       },
+      "additionalProperties": false
+    },
+
+    "ProcessDependency": {
+      "type": "object",
+      "description": "Reference to another process whose state gates this process/element.",
+      "properties": {
+        "process_id": { "type": "string", "description": "Target process definition id (URN/UUID/URI)" },
+        "instance_id": { "type": "string", "description": "Optional specific execution instance id" },
+        "required_state": {
+          "type": "string",
+          "enum": ["completed", "succeeded"],
+          "default": "completed"
+        },
+        "version_constraint": {
+          "type": "string",
+          "description": "Optional semver/regex constraint, e.g. '>=2.0 <3.0'"
+        },
+        "window": {
+          "type": "object",
+          "description": "Optional temporal window the dependency must satisfy",
+          "properties": {
+            "not_before": { "type": "string", "format": "date-time" },
+            "not_after": { "type": "string", "format": "date-time" },
+            "within": { "type": "string", "description": "ISO 8601 duration, e.g. 'P7D'" }
+          },
+          "additionalProperties": false
+        },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["process_id"],
       "additionalProperties": false
     },
 
@@ -182,10 +213,14 @@
             { "$ref": "#/$defs/ElementCommon" },
             {
               "type": "object",
-              "required": ["condition"],
               "properties": {
-                "condition": { "type": "string" }
+                "condition": { "type": "string" },
+                "depends_on_process": { "$ref": "#/$defs/ProcessDependency" }
               },
+              "anyOf": [
+                { "required": ["condition"] },
+                { "required": ["depends_on_process"] }
+              ],
               "additionalProperties": false
             }
           ]
@@ -202,14 +237,32 @@
             {
               "type": "object",
               "properties": {
+                "sequence_model": {
+                  "type": "string",
+                  "enum": ["sequential", "parallel", "dag"],
+                  "default": "dag",
+                  "description": "How to interpret steps (explicit order, all parallel, or DAG via depends_on)."
+                },
                 "steps": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "required": ["name"],
                     "properties": {
+                      "id": { "type": "string", "description": "Unique within activity; used by depends_on" },
                       "name": { "type": "string" },
                       "instruction": { "type": "string" },
+                      "sequence": { "type": "integer", "description": "Optional explicit order index" },
+                      "depends_on": {
+                        "type": "array",
+                        "description": "List of step ids that must complete before this step",
+                        "items": { "type": "string" }
+                      },
+                      "critical": { "type": "boolean", "description": "Marks this step as critical path candidate" },
+                      "time_estimate_minutes": { "type": "number" },
+                      "earliest_start_offset": { "type": "string", "description": "ISO 8601 duration from activity start" },
+                      "latest_finish_offset": { "type": "string", "description": "ISO 8601 duration from activity start" },
+
                       "overlays": { "$ref": "#/$defs/Overlays" },
                       "decision_artifacts": { "type": "array", "items": { "$ref": "#/$defs/DecisionArtifact" } },
                       "verification": { "$ref": "#/$defs/Verification" },
@@ -269,7 +322,6 @@
         "recordkeeping": { "$ref": "#/$defs/Recordkeeping" },
         "verification": { "$ref": "#/$defs/Verification" },
         "deployment": { "$ref": "#/$defs/DeploymentMapping" },
-
         "evidence": {
           "type": "object",
           "description": "Runtime-populated by the engine",
@@ -285,7 +337,6 @@
           },
           "additionalProperties": true
         },
-
         "metadata": { "type": "object", "additionalProperties": true }
       },
       "additionalProperties": false
@@ -347,8 +398,16 @@
   },
 
   "properties": {
-    "process": { "type": "string", "description": "Name of the process" },
-    "version": { "type": "string", "description": "Schema or process version (e.g. 2.2)" },
+    "process": { "type": "string", "description": "Human-readable process name" },
+    "process_id": { "type": "string", "description": "Stable unique identifier for this process (URN/UUID/URI)" },
+    "instance_id": { "type": "string", "description": "Optional runtime execution id (set by engine)" },
+    "version": { "type": "string", "description": "Schema or process version (e.g. 2.3)" },
+
+    "dependencies": {
+      "type": "array",
+      "description": "Other processes that must meet a state before this process can start or proceed.",
+      "items": { "$ref": "#/$defs/ProcessDependency" }
+    },
 
     "inputs": {
       "type": "array",
@@ -358,12 +417,12 @@
 
     "preconditions": {
       "type": "array",
-      "description": "Conditions that must be true before the process starts",
+      "description": "Conditions that must be true before the process starts (or dependencies on other processes)",
       "items": { "$ref": "#/$defs/PreconditionItem" }
     },
 
     "activity": {
-      "description": "The action to be performed",
+      "description": "The action to be performed (optionally composed of sequenced/DAG steps)",
       "$ref": "#/$defs/ActivityItem"
     },
 
