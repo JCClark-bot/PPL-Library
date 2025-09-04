@@ -1,100 +1,433 @@
 {
   "$schema": "http://json-schema.org/draft/2020-12/schema",
-  "title": "Process Protocol Layer (PPL) Schema",
+  "title": "Process Protocol Layer (PPL) Schema v2.2",
   "type": "object",
   "required": ["process", "inputs", "preconditions", "activity", "outputs", "approvals"],
-  "properties": {
-    "process": {
-      "type": "string",
-      "description": "Name of the process"
-    },
-    "version": {
-      "type": "string",
-      "description": "Schema or process version (e.g. 1.0)"
-    },
-    "inputs": {
-      "type": "array",
-      "description": "Data, documents, or materials required to begin",
-      "items": {
-        "type": ["string", "object"]
-      }
-    },
-    "preconditions": {
-      "type": "array",
-      "description": "Conditions that must be true before the process starts",
-      "items": {
-        "type": ["string", "object"]
-      }
-    },
-    "activity": {
-      "type": "string",
-      "description": "Description of the action to be performed"
-    },
-    "outputs": {
-      "type": "array",
-      "description": "Expected results of the activity",
-      "items": {
-        "type": ["string", "object"]
-      }
-    },
-    "approvals": {
-      "type": "array",
-      "description": "Verification or sign-off steps",
-      "items": {
-        "type": "object",
-        "required": ["type"],
-        "properties": {
-          "type": { "type": "string" },
-          "required": { "type": "boolean" },
-          "actor": { "type": "string", "description": "Who approves (human, system, role)" }
-        }
-      }
-    },
-    "decision_artifacts": {
-      "type": "array",
-      "description": "Documents, data, or artifacts used to guide decisions",
-      "items": { "type": "string" }
-    },
-    "transitions": {
-      "type": "array",
-      "description": "Links to next processes or states",
-      "items": {
-        "type": "object",
-        "properties": {
-          "to_process": { "type": "string" },
-          "condition": { "type": "string" }
-        }
-      }
-    },
-    "verification": {
+
+  "$defs": {
+    "MetricSpec": {
       "type": "object",
-      "description": "Defines if a human or system check is required",
+      "properties": {
+        "target": { "type": "number" },
+        "alert_over": { "type": "number" },
+        "alert_under": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "MetricsMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/MetricSpec" }
+    },
+    "BiasChecks": {
+      "type": "object",
+      "properties": {
+        "applies_to": { "type": "array", "items": { "type": "string" } },
+        "countermeasures": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "Controls": {
+      "type": "object",
+      "properties": {
+        "human_in_loop": { "type": "boolean" },
+        "segregation_of_duties": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "Overlays": {
+      "type": "object",
+      "description": "Optional overlays that modify or clarify the process or an element",
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "ref": { "type": "string", "description": "Document/URL reference" }
+                },
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "metrics": { "$ref": "#/$defs/MetricsMap" },
+        "bias_checks": { "$ref": "#/$defs/BiasChecks" },
+        "controls": { "$ref": "#/$defs/Controls" }
+      },
+      "additionalProperties": false
+    },
+
+    "Verification": {
+      "type": "object",
       "properties": {
         "method": { "type": "string" },
         "required": { "type": "boolean" }
-      }
+      },
+      "additionalProperties": false
     },
-    "deployment_profile": {
+
+    "DeploymentMapping": {
       "type": "object",
-      "description": "Links this definition to real systems or environments",
       "properties": {
         "system": { "type": "string" },
         "environment": { "type": "string" }
-      }
+      },
+      "additionalProperties": false
     },
+
+    "DecisionArtifact": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string" },
+            "ref": { "type": "string", "description": "Document/URL reference" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "Recordkeeping": {
+      "type": "object",
+      "description": "Optional routing/retention overrides; use sparingly (engine already audit-logs actions).",
+      "properties": {
+        "destination": { "type": "string", "description": "Storage path/URI (SharePoint, S3, QMS area, etc.)" },
+        "format": { "type": "string", "description": "Expected artifact format (PDF, JSON, CSV, etc.)" },
+        "retention": { "type": "string", "description": "e.g., 5 years" },
+        "policy_ref": { "type": "string", "description": "SOP/Policy reference" }
+      },
+      "additionalProperties": false
+    },
+
+    "Dispatch": {
+      "type": "object",
+      "description": "Send a generated record/package somewhere when a thing completes.",
+      "required": ["destination"],
+      "properties": {
+        "destination": { "type": "string", "description": "Target system/URI/email queue, etc." },
+        "format": { "type": "string", "description": "Payload format to send (PDF, JSON, ZIP, msgpack)" },
+        "template_ref": { "type": "string", "description": "Optional template or renderer reference" },
+        "include": {
+          "type": "object",
+          "description": "Selectors for what to include in the payload",
+          "properties": {
+            "inputs": { "type": "boolean" },
+            "outputs": { "type": "boolean" },
+            "approvals": { "type": "boolean" },
+            "activity_state": { "type": "boolean" },
+            "evidence_pack": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "sign": { "type": "boolean", "description": "Digitally sign the payload before dispatch" },
+        "encrypt": { "type": "boolean", "description": "Encrypt the payload at rest/in transit (engine-level keys)" },
+        "when": {
+          "type": "string",
+          "enum": ["on_activity_complete", "on_step_complete", "on_process_complete", "manual"],
+          "default": "on_activity_complete"
+        },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": false
+    },
+
+    "ElementCommon": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "overlays": { "$ref": "#/$defs/Overlays" },
+        "decision_artifacts": { "type": "array", "items": { "$ref": "#/$defs/DecisionArtifact" } },
+        "verification": { "$ref": "#/$defs/Verification" },
+        "deployment": { "$ref": "#/$defs/DeploymentMapping" },
+        "recordkeeping": { "$ref": "#/$defs/Recordkeeping" },
+        "dispatch": { "$ref": "#/$defs/Dispatch" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": false
+    },
+
+    "InputItem": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/ElementCommon" },
+            {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": { "type": "string" },
+                "source": { "type": "string", "description": "Where this input comes from" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      ]
+    },
+
+    "PreconditionItem": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/ElementCommon" },
+            {
+              "type": "object",
+              "required": ["condition"],
+              "properties": {
+                "condition": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      ]
+    },
+
+    "ActivityItem": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/ElementCommon" },
+            {
+              "type": "object",
+              "properties": {
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                      "name": { "type": "string" },
+                      "instruction": { "type": "string" },
+                      "overlays": { "$ref": "#/$defs/Overlays" },
+                      "decision_artifacts": { "type": "array", "items": { "$ref": "#/$defs/DecisionArtifact" } },
+                      "verification": { "$ref": "#/$defs/Verification" },
+                      "deployment": { "$ref": "#/$defs/DeploymentMapping" },
+                      "recordkeeping": { "$ref": "#/$defs/Recordkeeping" },
+                      "dispatch": { "$ref": "#/$defs/Dispatch" },
+                      "metadata": { "type": "object", "additionalProperties": true }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      ]
+    },
+
+    "OutputItem": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/ElementCommon" },
+            {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": { "type": "string" },
+                "destination": { "type": "string", "description": "Where this output is stored/sent" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      ]
+    },
+
+    "Approval": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "required": { "type": "boolean" },
+        "actor": { "type": "string", "description": "Who approves (human, system, role)" },
+        "applies_to": {
+          "type": "array",
+          "description": "Optional element targets (e.g., 'activity', 'outputs[0]')",
+          "items": { "type": "string" }
+        },
+        "method": {
+          "type": "string",
+          "enum": ["e_signature", "click_to_approve", "verbal_with_witness", "system_auto_gate"],
+          "description": "How the approval is executed"
+        },
+        "recordkeeping": { "$ref": "#/$defs/Recordkeeping" },
+        "verification": { "$ref": "#/$defs/Verification" },
+        "deployment": { "$ref": "#/$defs/DeploymentMapping" },
+
+        "evidence": {
+          "type": "object",
+          "description": "Runtime-populated by the engine",
+          "properties": {
+            "approval_id": { "type": "string" },
+            "signed_at": { "type": "string", "format": "date-time" },
+            "signer_id": { "type": "string" },
+            "signature_type": { "type": "string" },
+            "signature_ref": { "type": "string" },
+            "audit_log_id": { "type": "string" },
+            "hash": { "type": "string" },
+            "certificate_chain_ref": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+
+        "metadata": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": false
+    },
+
+    "Transition": {
+      "type": "object",
+      "properties": {
+        "to_process": { "type": "string" },
+        "condition": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "AuditInput": {
+      "type": "object",
+      "description": "Shape of input entries the engine writes to the audit log",
+      "properties": {
+        "event": { "type": "string", "const": "input_attached" },
+        "ts": { "type": "string", "format": "date-time" },
+        "process_id": { "type": "string" },
+        "element": { "type": "string", "description": "e.g., inputs[1]" },
+        "input": {
+          "type": "object",
+          "properties": {
+            "input_id": { "type": "string" },
+            "name": { "type": "string" },
+            "source_system": { "type": "string" },
+            "uri": { "type": "string" },
+            "mime": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "sha256": { "type": "string" },
+            "encryption": { "type": "string" },
+            "retention": { "type": "string" },
+            "tags": { "type": "array", "items": { "type": "string" } },
+            "embedded": { "type": "boolean" }
+          },
+          "required": ["name", "sha256"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["event", "ts", "element", "input"],
+      "additionalProperties": true
+    },
+
+    "EngineInputLogging": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["pointer", "embed", "hybrid"], "default": "pointer" },
+        "embed_max_bytes": { "type": "integer", "default": 2000000 },
+        "embed_mime_allowlist": { "type": "array", "items": { "type": "string" } },
+        "sensitive_field_denylist": { "type": "array", "items": { "type": "string" } },
+        "redact_patterns": { "type": "array", "items": { "type": "string" } },
+        "encryption": { "type": "string" },
+        "retention_default": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+
+  "properties": {
+    "process": { "type": "string", "description": "Name of the process" },
+    "version": { "type": "string", "description": "Schema or process version (e.g. 2.2)" },
+
+    "inputs": {
+      "type": "array",
+      "description": "Data, documents, or materials required to begin",
+      "items": { "$ref": "#/$defs/InputItem" }
+    },
+
+    "preconditions": {
+      "type": "array",
+      "description": "Conditions that must be true before the process starts",
+      "items": { "$ref": "#/$defs/PreconditionItem" }
+    },
+
+    "activity": {
+      "description": "The action to be performed",
+      "$ref": "#/$defs/ActivityItem"
+    },
+
+    "outputs": {
+      "type": "array",
+      "description": "Expected results of the activity",
+      "items": { "$ref": "#/$defs/OutputItem" }
+    },
+
+    "approvals": {
+      "type": "array",
+      "description": "Verification or sign-off steps",
+      "items": { "$ref": "#/$defs/Approval" }
+    },
+
+    "overlays": { "$ref": "#/$defs/Overlays" },
+
+    "decision_artifacts": {
+      "type": "array",
+      "description": "Global documents/data used to guide decisions",
+      "items": { "$ref": "#/$defs/DecisionArtifact" }
+    },
+
+    "verification": {
+      "description": "Global verification applied to the overall outcome",
+      "$ref": "#/$defs/Verification"
+    },
+
+    "deployment_profile": {
+      "description": "Global mapping to systems/environments",
+      "$ref": "#/$defs/DeploymentMapping"
+    },
+
+    "dispatch": {
+      "$ref": "#/$defs/Dispatch",
+      "description": "Optional process-level dispatch (e.g., final evidence pack)"
+    },
+
+    "transitions": {
+      "type": "array",
+      "description": "Links to next processes or states",
+      "items": { "$ref": "#/$defs/Transition" }
+    },
+
+    "engine_config": {
+      "type": "object",
+      "description": "Execution Engine knobs (doc-only; not enforced by JSON Schema tooling).",
+      "properties": {
+        "log_inputs": { "$ref": "#/$defs/EngineInputLogging" }
+      },
+      "additionalProperties": true
+    },
+
     "metadata": {
       "type": "object",
       "description": "Optional metadata for traceability",
       "properties": {
         "owner": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" },
-        "tags": {
-          "type": "array",
-          "items": { "type": "string" }
-        }
-      }
+        "tags": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
     }
   },
+
   "additionalProperties": false
 }
-
