@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft/2020-12/schema",
-  "title": "Process Protocol Layer (PPL) Schema v2.3",
+  "title": "Process Protocol Layer (PPL) Schema v2.4",
   "type": "object",
   "required": ["process", "inputs", "preconditions", "activity", "outputs", "approvals"],
 
@@ -170,6 +170,113 @@
       "additionalProperties": false
     },
 
+    "GuardSpec": {
+      "type": "object",
+      "description": "Step-level gates evaluated at runtime.",
+      "properties": {
+        "preconditions": {
+          "type": "array",
+          "items": { "type": "string", "description": "Boolean expression or policy reference." }
+        },
+        "inputs_required": {
+          "type": "array",
+          "items": { "type": "string", "description": "Names/paths of required inputs." }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "PartitionSpec": {
+      "type": "object",
+      "description": "Controls per-item or batched execution over lists.",
+      "properties": {
+        "mode": { "type": "string", "enum": ["none", "per-item", "batch"], "default": "none" },
+        "input_path": { "type": "string", "description": "JSON Pointer/Path to the list to iterate." },
+        "batch_size": { "type": "integer", "minimum": 1 },
+        "concurrency": { "type": "integer", "minimum": 1, "description": "Max parallel workers." }
+      },
+      "additionalProperties": false
+    },
+
+    "AggregationSpec": {
+      "type": "object",
+      "description": "How to merge parallel outputs.",
+      "properties": {
+        "method": { "type": "string", "enum": ["concat", "merge", "reduce", "vote"], "default": "concat" },
+        "key": { "type": "string", "description": "Optional key for reduce/merge." },
+        "script_ref": { "type": "string", "description": "Optional custom reducer reference." },
+        "output": { "type": "string", "description": "Name of aggregated output variable." }
+      },
+      "additionalProperties": false
+    },
+
+    "SubprocessCall": {
+      "type": "object",
+      "description": "Execute another PPL-defined process as part of this step.",
+      "properties": {
+        "process_ref": { "type": "string", "description": "Target process id/URN/URI." },
+        "version_constraint": { "type": "string", "description": "e.g., '>=1.0 <2.0'." },
+        "mode": { "type": "string", "enum": ["sync", "spawn"], "default": "sync" },
+        "map_inputs": {
+          "type": "object",
+          "description": "Mapping from parent vars to callee inputs.",
+          "additionalProperties": true
+        },
+        "map_outputs": {
+          "type": "object",
+          "description": "Mapping from callee outputs to parent vars.",
+          "additionalProperties": true
+        }
+      },
+      "required": ["process_ref"],
+      "additionalProperties": false
+    },
+
+    "AuditInput": {
+      "type": "object",
+      "description": "Shape of input entries the engine writes to the audit log",
+      "properties": {
+        "event": { "type": "string", "const": "input_attached" },
+        "ts": { "type": "string", "format": "date-time" },
+        "process_id": { "type": "string" },
+        "element": { "type": "string", "description": "e.g., inputs[1]" },
+        "input": {
+          "type": "object",
+          "properties": {
+            "input_id": { "type": "string" },
+            "name": { "type": "string" },
+            "source_system": { "type": "string" },
+            "uri": { "type": "string" },
+            "mime": { "type": "string" },
+            "size_bytes": { "type": "integer" },
+            "sha256": { "type": "string" },
+            "encryption": { "type": "string" },
+            "retention": { "type": "string" },
+            "tags": { "type": "array", "items": { "type": "string" } },
+            "embedded": { "type": "boolean" }
+          },
+          "required": ["name", "sha256"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["event", "ts", "element", "input"],
+      "additionalProperties": true
+    },
+
+    "EngineInputLogging": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["pointer", "embed", "hybrid"], "default": "pointer" },
+        "embed_max_bytes": { "type": "integer", "default": 2000000 },
+        "embed_mime_allowlist": { "type": "array", "items": { "type": "string" } },
+        "sensitive_field_denylist": { "type": "array", "items": { "type": "string" } },
+        "redact_patterns": { "type": "array", "items": { "type": "string" } },
+        "encryption": { "type": "string" },
+        "retention_default": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
     "ElementCommon": {
       "type": "object",
       "properties": {
@@ -180,7 +287,12 @@
         "deployment": { "$ref": "#/$defs/DeploymentMapping" },
         "recordkeeping": { "$ref": "#/$defs/Recordkeeping" },
         "dispatch": { "$ref": "#/$defs/Dispatch" },
-        "metadata": { "type": "object", "additionalProperties": true }
+        "metadata": { "type": "object", "additionalProperties": true },
+        "runtime_hints": {
+          "type": "object",
+          "description": "Optional, non-portable hints for runtimes/interpreters. Use namespaced keys like 'x-n8n', 'x-airflow', 'x-agents'.",
+          "additionalProperties": true
+        }
       },
       "additionalProperties": false
     },
@@ -251,6 +363,19 @@
                     "properties": {
                       "id": { "type": "string", "description": "Unique within activity; used by depends_on" },
                       "name": { "type": "string" },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "ai.task",
+                          "system.http",
+                          "data.transform",
+                          "human.task",
+                          "subprocess.call",
+                          "wait.event",
+                          "decision"
+                        ],
+                        "description": "Semantic step type."
+                      },
                       "instruction": { "type": "string" },
                       "sequence": { "type": "integer", "description": "Optional explicit order index" },
                       "depends_on": {
@@ -263,13 +388,34 @@
                       "earliest_start_offset": { "type": "string", "description": "ISO 8601 duration from activity start" },
                       "latest_finish_offset": { "type": "string", "description": "ISO 8601 duration from activity start" },
 
+                      "inputs_map": {
+                        "type": "object",
+                        "description": "Name→JSON Pointer/Path from process context into this step.",
+                        "additionalProperties": true
+                      },
+                      "outputs_map": {
+                        "type": "object",
+                        "description": "Name→JSON Pointer/Path from this step back into process context.",
+                        "additionalProperties": true
+                      },
+
+                      "guards": { "$ref": "#/$defs/GuardSpec" },
+                      "partition": { "$ref": "#/$defs/PartitionSpec" },
+                      "aggregation": { "$ref": "#/$defs/AggregationSpec" },
+                      "subprocess": { "$ref": "#/$defs/SubprocessCall" },
+
                       "overlays": { "$ref": "#/$defs/Overlays" },
                       "decision_artifacts": { "type": "array", "items": { "$ref": "#/$defs/DecisionArtifact" } },
                       "verification": { "$ref": "#/$defs/Verification" },
                       "deployment": { "$ref": "#/$defs/DeploymentMapping" },
                       "recordkeeping": { "$ref": "#/$defs/Recordkeeping" },
                       "dispatch": { "$ref": "#/$defs/Dispatch" },
-                      "metadata": { "type": "object", "additionalProperties": true }
+                      "metadata": { "type": "object", "additionalProperties": true },
+                      "runtime_hints": {
+                        "type": "object",
+                        "description": "Optional, non-portable hints for runtimes/interpreters. Use namespaced keys like 'x-n8n', 'x-airflow', 'x-agents'.",
+                        "additionalProperties": true
+                      }
                     },
                     "additionalProperties": false
                   }
@@ -349,51 +495,6 @@
         "condition": { "type": "string" }
       },
       "additionalProperties": false
-    },
-
-    "AuditInput": {
-      "type": "object",
-      "description": "Shape of input entries the engine writes to the audit log",
-      "properties": {
-        "event": { "type": "string", "const": "input_attached" },
-        "ts": { "type": "string", "format": "date-time" },
-        "process_id": { "type": "string" },
-        "element": { "type": "string", "description": "e.g., inputs[1]" },
-        "input": {
-          "type": "object",
-          "properties": {
-            "input_id": { "type": "string" },
-            "name": { "type": "string" },
-            "source_system": { "type": "string" },
-            "uri": { "type": "string" },
-            "mime": { "type": "string" },
-            "size_bytes": { "type": "integer" },
-            "sha256": { "type": "string" },
-            "encryption": { "type": "string" },
-            "retention": { "type": "string" },
-            "tags": { "type": "array", "items": { "type": "string" } },
-            "embedded": { "type": "boolean" }
-          },
-          "required": ["name", "sha256"],
-          "additionalProperties": true
-        }
-      },
-      "required": ["event", "ts", "element", "input"],
-      "additionalProperties": true
-    },
-
-    "EngineInputLogging": {
-      "type": "object",
-      "properties": {
-        "mode": { "type": "string", "enum": ["pointer", "embed", "hybrid"], "default": "pointer" },
-        "embed_max_bytes": { "type": "integer", "default": 2000000 },
-        "embed_mime_allowlist": { "type": "array", "items": { "type": "string" } },
-        "sensitive_field_denylist": { "type": "array", "items": { "type": "string" } },
-        "redact_patterns": { "type": "array", "items": { "type": "string" } },
-        "encryption": { "type": "string" },
-        "retention_default": { "type": "string" }
-      },
-      "additionalProperties": false
     }
   },
 
@@ -401,7 +502,7 @@
     "process": { "type": "string", "description": "Human-readable process name" },
     "process_id": { "type": "string", "description": "Stable unique identifier for this process (URN/UUID/URI)" },
     "instance_id": { "type": "string", "description": "Optional runtime execution id (set by engine)" },
-    "version": { "type": "string", "description": "Schema or process version (e.g. 2.3)" },
+    "version": { "type": "string", "description": "Schema or process version (e.g. 2.4.0)" },
 
     "dependencies": {
       "type": "array",
@@ -485,6 +586,12 @@
         "tags": { "type": "array", "items": { "type": "string" } }
       },
       "additionalProperties": false
+    },
+
+    "runtime_hints": {
+      "type": "object",
+      "description": "Optional, non-portable hints for runtimes/interpreters. Use namespaced keys like 'x-n8n', 'x-airflow', 'x-agents'.",
+      "additionalProperties": true
     }
   },
 
