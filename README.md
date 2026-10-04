@@ -5,6 +5,20 @@ This repository serves as the **core library**, documenting the schema, example 
 
 ---
 
+## The paper
+
+The schema in this repository comes from the white paper
+*The Process Protocol Layer (PPL): A White Paper on Transparent, Auditable, and Trustworthy AI*
+by Jared Charles Clark (Zenodo, 2025).
+
+- Read or cite it: https://doi.org/10.5281/zenodo.16996205
+- Companion paper, *Artificial Intelligence Exchange (AIX): A Protocol for Inter-Agent Interchange*:
+  https://doi.org/10.5281/zenodo.16998200
+- Author: [Jared Clark](https://certify.consulting/about/), Certify Consulting ·
+  [ORCID 0009-0007-1176-6588](https://orcid.org/0009-0007-1176-6588)
+
+---
+
 ## What is PPL?
 
 Like DNA’s four bases, PPL reduces any process into a simple but universal structure.  
